@@ -17,6 +17,7 @@ limitations under the License.
 package logic
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -113,6 +114,7 @@ func NewMemoryEstimator(percentile float64) MemoryEstimator {
 // GetCPUEstimation returns the CPU estimation for the given AggregateContainerState.
 func (e *cpuMarginEstimator) GetCPUEstimation(s *model.AggregateContainerState) model.ResourceAmount {
 	base := e.baseEstimator.GetCPUEstimation(s)
+	fmt.Println(base)
 	margin := model.ScaleResource(base, e.marginFraction)
 	return base + margin
 }

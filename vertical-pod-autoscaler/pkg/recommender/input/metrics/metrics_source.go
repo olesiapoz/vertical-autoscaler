@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	k8sapiv1 "k8s.io/api/core/v1"
@@ -97,6 +98,7 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 		pods := s.clusterState.GetMatchingPods(vpa)
 
 		for _, pod := range pods {
+			fmt.Printf("pod %s metrics are extracted", pod)
 			podNameReq, err := labels.NewRequirement("pod", selection.Equals, []string{pod.PodName})
 			if err != nil {
 				return nil, err
@@ -111,6 +113,7 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 			// Query each resource in turn, then assemble back to a single []ContainerMetrics.
 			containerMetrics := make(map[string]k8sapiv1.ResourceList)
 			for resourceName, metricName := range s.options.ResourceMetrics {
+				fmt.Print("Metric Name: %s", metricName)
 				m, err := nsClient.List(metricName, selector)
 				if err != nil {
 					return nil, err
@@ -139,6 +142,7 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 			for cname, res := range containerMetrics {
 				podMets.Containers = append(podMets.Containers, v1beta1.ContainerMetrics{Name: cname, Usage: res})
 			}
+
 			result.Items = append(result.Items, podMets)
 
 		}

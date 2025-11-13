@@ -184,11 +184,13 @@ func NewPrometheusHistoryProvider(config PrometheusHistoryProviderConfig) (Histo
 	if err != nil {
 		return &prometheusHistoryProvider{}, fmt.Errorf("history length %s is not a valid Prometheus duration: %v", config.HistoryLength, err)
 	}
+	fmt.Println(historyDuration)
 
 	historyResolution, err := prommodel.ParseDuration(config.HistoryResolution)
 	if err != nil {
 		return &prometheusHistoryProvider{}, fmt.Errorf("history resolution %s is not a valid Prometheus duration: %v", config.HistoryResolution, err)
 	}
+	fmt.Println(historyDuration)
 
 	return &prometheusHistoryProvider{
 		prometheusClient:  prometheusv1.NewAPI(promClient),
@@ -232,6 +234,8 @@ func (p *prometheusHistoryProvider) getPodIDFromLabels(metric prommodel.Metric) 
 	if !ok {
 		return nil, fmt.Errorf("no %s label", p.config.PodNameLabel)
 	}
+	fmt.Printf("Namespace: %s, PodName: %s", namespace, podName)
+
 	return &model.PodID{Namespace: namespace, PodName: podName}, nil
 }
 
@@ -285,6 +289,7 @@ func (p *prometheusHistoryProvider) readResourceHistory(res map[model.PodID]*Pod
 	ctx, cancel := context.WithTimeout(context.Background(), p.queryTimeout)
 	defer cancel()
 
+	fmt.Printf("Query:%s", query)
 	result, _, err := p.prometheusClient.QueryRange(ctx, query, prometheusv1.Range{
 		Start: start,
 		End:   end,
@@ -322,7 +327,9 @@ func (p *prometheusHistoryProvider) readLastLabels(res map[model.PodID]*PodHisto
 	ctx, cancel := context.WithTimeout(context.Background(), p.queryTimeout)
 	defer cancel()
 
+	fmt.Printf("Query1: %s", query)
 	result, _, err := p.prometheusClient.Query(ctx, query, time.Now())
+	fmt.Printf("get timeseries for labels: %v", result)
 	if err != nil {
 		return fmt.Errorf("cannot get timeseries for labels: %v", err)
 	}
@@ -334,6 +341,7 @@ func (p *prometheusHistoryProvider) readLastLabels(res map[model.PodID]*PodHisto
 
 	for _, ts := range matrix {
 		podID, err := p.getPodIDFromLabels(ts.Metric)
+		fmt.Printf("PODID: %s", podID)
 		if err != nil {
 			return fmt.Errorf("cannot get container ID from labels %v: %v", ts.Metric, err)
 		}
@@ -367,7 +375,10 @@ func (p *prometheusHistoryProvider) GetClusterHistory() (map[model.PodID]*PodHis
 	if p.config.Namespace != "" {
 		podSelector = fmt.Sprintf("%s, %s=\"%s\"", podSelector, p.config.CtrNamespaceLabel, p.config.Namespace)
 	}
+
+	fmt.Printf("Pod SELCTOR: %s", podSelector)
 	historicalCpuQuery := fmt.Sprintf("rate(container_cpu_usage_seconds_total{%s}[%s])", podSelector, p.config.HistoryResolution)
+	fmt.Printf("HISTORICAL CPU QUERY:: %s", historicalCpuQuery)
 	klog.V(4).InfoS("Historical CPU usage query", "query", historicalCpuQuery)
 	err := p.readResourceHistory(res, historicalCpuQuery, model.ResourceCPU)
 	if err != nil {
@@ -376,6 +387,7 @@ func (p *prometheusHistoryProvider) GetClusterHistory() (map[model.PodID]*PodHis
 
 	historicalMemoryQuery := fmt.Sprintf("container_memory_working_set_bytes{%s}", podSelector)
 	klog.V(4).InfoS("Historical memory usage query", "query", historicalMemoryQuery)
+	fmt.Printf("HISTORICAL MEM QUERY:: %s", historicalMemoryQuery)
 	err = p.readResourceHistory(res, historicalMemoryQuery, model.ResourceMemory)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get usage history: %v", err)

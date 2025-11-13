@@ -1,7 +1,7 @@
 all: build
 
 TAG?=dev
-REGISTRY?=gcr.io/k8s-staging-autoscaling
+REGISTRY?=olesiapoz
 FLAGS=
 TEST_ENVVAR=LD_FLAGS=-s GO111MODULE=on
 ENVVAR=CGO_ENABLED=0 $(TEST_ENVVAR)
@@ -12,7 +12,7 @@ FULL_COMPONENT=vpa-${COMPONENT}
 INSECURE=$(subst localhost,--insecure,$(findstring localhost,$(REGISTRY)))
 
 BUILD_LD_FLAGS?=-s
-ALL_ARCHITECTURES?=amd64 arm arm64 ppc64le s390x
+ALL_ARCHITECTURES?=arm64 #ppc64le s390x amd64 arm
 export DOCKER_CLI_EXPERIMENTAL=enabled
 
 build: clean

@@ -221,7 +221,9 @@ type clusterStateFeeder struct {
 
 func (feeder *clusterStateFeeder) InitFromHistoryProvider(historyProvider history.HistoryProvider) {
 	klog.V(3).InfoS("Initializing VPA from history provider")
+
 	clusterHistory, err := historyProvider.GetClusterHistory()
+	fmt.Printf("HistoryProvider: %v", clusterHistory)
 	if err != nil {
 		klog.ErrorS(err, "Cannot get cluster history")
 	}
