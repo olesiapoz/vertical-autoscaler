@@ -28,15 +28,21 @@ spec:
         - --container-name-label=pod
         - --pod-name-label=pod
         - --pod-label-prefix=label
-        - --metric-for-pod-labels=kube_pod_labels{job="kube-state-metrics"}[100m]
+        - --metric-for-pod-labels=kube_pod_labels{job="kubelet"}[2d]
         - --container-namespace-label=namespace
         - --container-name-label=pod
         - --pod-namespace-label=namespace
-        - --history-length=200m
-        - --history-resolution=5m
+        - --history-length=2d
+        - --history-resolution=1m
+        - --cpu-histogram-decay-half-life=12h
+        - --memory-aggregation-interval=6h
+        - --memory-aggregation-interval-count=8
+        - --memory-histogram-decay-half-life=12h
+        - --external-metrics-cpu-metric=container_cpu_usage_seconds_total
+        - --external-metrics-memory-metric=container_memory_working_set_bytes
         name: recommender
         image: olesiapoz/vpa-recommender-arm64:dev
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         resources:
           limits:
             cpu: 200m
