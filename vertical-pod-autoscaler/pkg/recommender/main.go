@@ -350,6 +350,7 @@ func run(ctx context.Context, healthCheck *metrics.HealthCheck, commonFlag *comm
 				Username:    *username,
 				Password:    *password,
 			},
+			SLATime: time.Now(),
 		}
 		provider, err := history.NewPrometheusHistoryProvider(config)
 		if err != nil {

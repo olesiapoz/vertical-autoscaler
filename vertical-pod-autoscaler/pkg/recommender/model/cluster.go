@@ -248,6 +248,7 @@ func (cluster *clusterState) AddSample(sample *ContainerUsageSampleWithKey) erro
 	if !containerExists {
 		return NewKeyError(sample.Container)
 	}
+
 	if !containerState.AddSample(&sample.ContainerUsageSample) {
 		return fmt.Errorf("sample discarded (invalid or out of order)")
 	}

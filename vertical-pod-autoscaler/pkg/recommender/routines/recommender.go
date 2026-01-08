@@ -19,9 +19,11 @@ package routines
 import (
 	"context"
 	"flag"
+	"fmt"
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"k8s.io/klog/v2"
 
 	v1 "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
@@ -80,9 +82,21 @@ func (r *recommender) GetClusterStateFeeder() input.ClusterStateFeeder {
 	return r.clusterStateFeeder
 }
 
+// TODO: PHD Get recomndationo for containers that are tracked by VPA. VPA contains list of
+// pods/containers to track
+//I need to resturn resources := map of [containerName: recomendedResources{
+// target
+// lowerBound
+// upperBound
+//}]
+
 func processVPAUpdate(r *recommender, vpa *model.Vpa, observedVpa *v1.VerticalPodAutoscaler) {
+	fmt.Println("VPA")
+	spew.Dump(vpa)
 	resources := r.podResourceRecommender.GetRecommendedPodResources(GetContainerNameToAggregateStateMap(vpa))
 	had := vpa.HasRecommendation()
+	fmt.Println("Resources")
+	spew.Dump(resources)
 
 	listOfResourceRecommendation := logic.MapToListOfRecommendedContainerResources(resources)
 
@@ -185,6 +199,7 @@ func (r *recommender) RunOnce() {
 
 	r.clusterStateFeeder.LoadRealTimeMetrics(ctx)
 	timer.ObserveStep("LoadMetrics")
+
 	klog.V(3).InfoS("ClusterState is tracking", "pods", len(r.clusterState.Pods()), "vpas", len(r.clusterState.VPAs()))
 
 	r.UpdateVPAs()

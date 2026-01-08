@@ -18,9 +18,11 @@ package logic
 
 import (
 	"flag"
+	"fmt"
 	"sort"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	vpa_types "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
 )
@@ -42,12 +44,14 @@ var (
 	roundMemoryBytes           = flag.Int("round-memory-bytes", 1, `Memory recommendation rounding factor in bytes. The Memory value will always be rounded up to the nearest multiple of this factor.`)
 )
 
+// TODO: PHD GetRecommendedPodResources can be replaced with my method to calculate resources.
 // PodResourceRecommender computes resource recommendation for a Vpa object.
 type PodResourceRecommender interface {
 	GetRecommendedPodResources(containerNameToAggregateStateMap model.ContainerNameToAggregateStateMap) RecommendedPodResources
 }
 
 // RecommendedPodResources is a Map from container name to recommended resources.
+
 type RecommendedPodResources map[string]RecommendedContainerResources
 
 // RecommendedContainerResources is the recommendation of resources for a
@@ -70,6 +74,7 @@ type podResourceRecommender struct {
 	upperBoundMemory MemoryEstimator
 }
 
+// TODO: PHD return recommednations.
 func (r *podResourceRecommender) GetRecommendedPodResources(containerNameToAggregateStateMap model.ContainerNameToAggregateStateMap) RecommendedPodResources {
 	var recommendation = make(RecommendedPodResources)
 	if len(containerNameToAggregateStateMap) == 0 {
@@ -98,6 +103,7 @@ func (r *podResourceRecommender) GetRecommendedPodResources(containerNameToAggre
 // Takes AggregateContainerState and returns a container recommendation.
 func (r *podResourceRecommender) estimateContainerResources(s *model.AggregateContainerState) RecommendedContainerResources {
 	resources := s.GetControlledResources()
+
 	target := model.Resources{model.ResourceCPU: r.targetCPU.GetCPUEstimation(s), model.ResourceMemory: r.targetMemory.GetMemoryEstimation(s)}
 	lowerBound := model.Resources{model.ResourceCPU: r.lowerBoundCPU.GetCPUEstimation(s), model.ResourceMemory: r.lowerBoundMemory.GetMemoryEstimation(s)}
 	upperBound := model.Resources{model.ResourceCPU: r.upperBoundCPU.GetCPUEstimation(s), model.ResourceMemory: r.upperBoundMemory.GetMemoryEstimation(s)}
@@ -121,6 +127,7 @@ func FilterControlledResources(estimation model.Resources, controlledResources [
 
 // CreatePodResourceRecommender returns the primary recommender.
 func CreatePodResourceRecommender() PodResourceRecommender {
+	//TODO: PHD replace methods with your recomendation. Taget CPU returns
 	targetCPU := NewPercentileCPUEstimator(*targetCPUPercentile)
 	lowerBoundCPU := NewPercentileCPUEstimator(*lowerBoundCPUPercentile)
 	upperBoundCPU := NewPercentileCPUEstimator(*upperBoundCPUPercentile)
@@ -185,6 +192,8 @@ func MapToListOfRecommendedContainerResources(resources RecommendedPodResources)
 	// Sort the container names from the map. This is because maps are an
 	// unordered data structure, and iterating through the map will return
 	// a different order on every call.
+	fmt.Println("MapToListOfRecommendedContainerResources")
+	spew.Dump(resources)
 	containerNames := make([]string, 0, len(resources))
 	for containerName := range resources {
 		containerNames = append(containerNames, containerName)

@@ -219,6 +219,7 @@ type clusterStateFeeder struct {
 	vpaObjectNamespace  string
 }
 
+// TODO: PHD Adds measuremet samples of containere received from Prometheus at Init stage
 func (feeder *clusterStateFeeder) InitFromHistoryProvider(historyProvider history.HistoryProvider) {
 	klog.V(3).InfoS("Initializing VPA from history provider")
 
@@ -499,6 +500,7 @@ func (feeder *clusterStateFeeder) LoadPods() {
 	}
 }
 
+// TODO: Gets metrics for snapshot to cluster
 func (feeder *clusterStateFeeder) LoadRealTimeMetrics(ctx context.Context) {
 	containersMetrics, err := feeder.metricsClient.GetContainersMetrics(ctx)
 	if err != nil {

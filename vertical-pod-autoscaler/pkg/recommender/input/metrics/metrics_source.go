@@ -113,7 +113,7 @@ func (s *externalMetricsClient) List(ctx context.Context, namespace string, opts
 			// Query each resource in turn, then assemble back to a single []ContainerMetrics.
 			containerMetrics := make(map[string]k8sapiv1.ResourceList)
 			for resourceName, metricName := range s.options.ResourceMetrics {
-				fmt.Print("Metric Name: %s", metricName)
+				fmt.Printf("Metric Name: %s", metricName)
 				m, err := nsClient.List(metricName, selector)
 				if err != nil {
 					return nil, err

@@ -156,10 +156,12 @@ func WithMemoryConfidenceMultiplier(multiplier, exponent float64, baseEstimator 
 	}
 }
 
+// TODO: PHD
 func (e *percentileCPUEstimator) GetCPUEstimation(s *model.AggregateContainerState) model.ResourceAmount {
 	return model.CPUAmountFromCores(s.AggregateCPUUsage.Percentile(e.percentile))
 }
 
+// TODO: PHD
 func (e *percentileMemoryEstimator) GetMemoryEstimation(s *model.AggregateContainerState) model.ResourceAmount {
 	return model.MemoryAmountFromBytes(s.AggregateMemoryPeaks.Percentile(e.percentile))
 }

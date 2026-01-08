@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// RequestEntity<Void> request = buildRequest("sum(rate(request_duration_bucket{le=\"1.0\", app=\"demo1\"}["+minutes+"m]))/ignoring(le)sum(rate(request_duration_count{app=\"demo1\"}["+minutes+"m]))*100");
+
 package history
 
 import (
@@ -93,6 +95,7 @@ type PrometheusHistoryProviderConfig struct {
 	Namespace                                        string
 
 	Authentication PrometheusCredentials
+	SLATime        time.Time
 }
 
 // PrometheusCredentials keeps credentials for Prometheus API. The Username + Password pair is mutually exclusive with
@@ -190,7 +193,7 @@ func NewPrometheusHistoryProvider(config PrometheusHistoryProviderConfig) (Histo
 	if err != nil {
 		return &prometheusHistoryProvider{}, fmt.Errorf("history resolution %s is not a valid Prometheus duration: %v", config.HistoryResolution, err)
 	}
-	fmt.Println(historyDuration)
+	fmt.Println(historyResolution)
 
 	return &prometheusHistoryProvider{
 		prometheusClient:  prometheusv1.NewAPI(promClient),
@@ -266,6 +269,8 @@ func resourceAmountFromValue(value float64, resource model.ResourceName) model.R
 		return model.CPUAmountFromCores(value)
 	case model.ResourceMemory:
 		return model.MemoryAmountFromBytes(value)
+	case model.ResourceSLA:
+		return model.CPUAmountFromCores(value)
 	}
 	return model.ResourceAmount(0)
 }
@@ -295,6 +300,7 @@ func (p *prometheusHistoryProvider) readResourceHistory(res map[model.PodID]*Pod
 		End:   end,
 		Step:  time.Duration(p.historyResolution),
 	})
+
 	if err != nil {
 		return fmt.Errorf("cannot get timeseries for %v: %v", resource, err)
 	}
@@ -311,6 +317,7 @@ func (p *prometheusHistoryProvider) readResourceHistory(res map[model.PodID]*Pod
 		}
 
 		newSamples := getContainerUsageSamplesFromSamples(ts.Values, resource)
+
 		podHistory, ok := res[containerID.PodID]
 		if !ok {
 			podHistory = newEmptyHistory()
@@ -319,7 +326,30 @@ func (p *prometheusHistoryProvider) readResourceHistory(res map[model.PodID]*Pod
 		podHistory.Samples[containerID.ContainerName] = append(
 			podHistory.Samples[containerID.ContainerName],
 			newSamples...)
+
 	}
+
+	// 3. Iterate and Format the Matrix
+	fmt.Println("\n--- Formatted Query Results ---")
+
+	// Iterate over each time series (stream) in the Matrix
+	for i, stream := range matrix {
+		// stream.Metric contains the labels
+		fmt.Printf("Stream %d: Metric %s\n", i+1, stream.Metric.String())
+
+		// Iterate over each data point (SamplePair) in the time series
+		for _, pair := range stream.Values {
+			// Convert model.Time to standard Go time.Time for human-readable output
+			timestamp := pair.Timestamp.Time()
+
+			// Format the output
+			fmt.Printf("  -> Time: %s, Value: %f\n",
+				timestamp.Format("2006-01-02 15:04:05"),
+				pair.Value)
+		}
+	}
+	fmt.Println("-------------------------------")
+
 	return nil
 }
 
@@ -341,7 +371,7 @@ func (p *prometheusHistoryProvider) readLastLabels(res map[model.PodID]*PodHisto
 
 	for _, ts := range matrix {
 		podID, err := p.getPodIDFromLabels(ts.Metric)
-		fmt.Printf("PODID: %s", podID)
+		fmt.Printf("POD ID: %s", podID)
 		if err != nil {
 			return fmt.Errorf("cannot get container ID from labels %v: %v", ts.Metric, err)
 		}
@@ -355,11 +385,33 @@ func (p *prometheusHistoryProvider) readLastLabels(res map[model.PodID]*PodHisto
 		// time series results will always be sorted chronologically from oldest to
 		// newest, so the last element is the latest sample
 		lastSample := ts.Values[len(ts.Values)-1]
+		fmt.Printf("Last sample: %s", lastSample)
 		if lastSample.Timestamp.Time().After(podHistory.LastSeen) {
 			podHistory.LastSeen = lastSample.Timestamp.Time()
 			podHistory.LastLabels = podLabels
 		}
 	}
+
+	// 3. Iterate and Format the Matrix
+	fmt.Println("\n--- Formatted Query Results for Last Metrics ---")
+
+	// Iterate over each time series (stream) in the Matrix
+	for i, stream := range matrix {
+		// stream.Metric contains the labels
+		fmt.Printf("Stream %d: Metric %s\n", i+1, stream.Metric.String())
+
+		// Iterate over each data point (SamplePair) in the time series
+		for _, pair := range stream.Values {
+			// Convert model.Time to standard Go time.Time for human-readable output
+			timestamp := pair.Timestamp.Time()
+
+			// Format the output
+			fmt.Printf("  -> Time: %s, Value: %f\n",
+				timestamp.Format("2006-01-02 15:04:05"),
+				pair.Value)
+		}
+	}
+	fmt.Println("-------------------------------")
 	return nil
 }
 
@@ -376,9 +428,9 @@ func (p *prometheusHistoryProvider) GetClusterHistory() (map[model.PodID]*PodHis
 		podSelector = fmt.Sprintf("%s, %s=\"%s\"", podSelector, p.config.CtrNamespaceLabel, p.config.Namespace)
 	}
 
-	fmt.Printf("Pod SELCTOR: %s", podSelector)
+	fmt.Printf("Pod SELECTOR: %s", podSelector)
 	historicalCpuQuery := fmt.Sprintf("rate(container_cpu_usage_seconds_total{%s}[%s])", podSelector, p.config.HistoryResolution)
-	fmt.Printf("HISTORICAL CPU QUERY:: %s", historicalCpuQuery)
+	fmt.Printf("HISTORICAL CPU QUERY: %s", historicalCpuQuery)
 	klog.V(4).InfoS("Historical CPU usage query", "query", historicalCpuQuery)
 	err := p.readResourceHistory(res, historicalCpuQuery, model.ResourceCPU)
 	if err != nil {
@@ -387,11 +439,24 @@ func (p *prometheusHistoryProvider) GetClusterHistory() (map[model.PodID]*PodHis
 
 	historicalMemoryQuery := fmt.Sprintf("container_memory_working_set_bytes{%s}", podSelector)
 	klog.V(4).InfoS("Historical memory usage query", "query", historicalMemoryQuery)
-	fmt.Printf("HISTORICAL MEM QUERY:: %s", historicalMemoryQuery)
+	fmt.Printf("HISTORICAL MEM QUERY: %s", historicalMemoryQuery)
 	err = p.readResourceHistory(res, historicalMemoryQuery, model.ResourceMemory)
 	if err != nil {
 		return nil, fmt.Errorf("cannot get usage history: %v", err)
 	}
+
+	diff := time.Since(p.config.SLATime) + (300 * time.Second)
+	d := (60 * time.Second)
+	podMon := "container=\"demo1\""
+	fmt.Printf("SLA duration %v", diff.Minutes())
+	historicalSLAQuery := fmt.Sprintf("sum(rate(request_duration_bucket{le=\"3.0\", %s}[%vm]))/ignoring(le)sum(rate(request_duration_count{%s}[%vm]))*100", podMon, diff.Round(d).Minutes(), podMon, diff.Round(d).Minutes())
+	klog.V(4).InfoS("Historical SLA query", "query", historicalSLAQuery)
+	fmt.Printf("HISTORICAL SLA QUERY: %s", historicalSLAQuery)
+	err = p.readSLAResourceHistory(res, historicalSLAQuery, model.ResourceSLA)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get usage history: %v", err)
+	}
+
 	for _, podHistory := range res {
 		for _, samples := range podHistory.Samples {
 			sort.Slice(samples, func(i, j int) bool { return samples[i].MeasureStart.Before(samples[j].MeasureStart) })
@@ -404,3 +469,157 @@ func (p *prometheusHistoryProvider) GetClusterHistory() (map[model.PodID]*PodHis
 
 	return res, nil
 }
+
+func (p *prometheusHistoryProvider) readSLAResourceHistory(res map[model.PodID]*PodHistory, query string, resource model.ResourceName) error {
+	end := time.Now()
+	start := end.Add(-time.Duration(p.historyDuration))
+
+	ctx, cancel := context.WithTimeout(context.Background(), p.queryTimeout)
+	defer cancel()
+
+	fmt.Printf("Query:%s", query)
+	result, _, err := p.prometheusClient.QueryRange(ctx, query, prometheusv1.Range{
+		Start: start,
+		End:   end,
+		Step:  time.Duration(p.historyResolution),
+	})
+
+	if err != nil {
+		return fmt.Errorf("cannot get timeseries for %v: %v", resource, err)
+	}
+
+	matrix, ok := result.(prommodel.Matrix)
+	if !ok {
+		return fmt.Errorf("expected query to return a matrix; got result type %T", result)
+	}
+
+	for _, ts := range matrix {
+		containerID, err := p.getContainerIDFromLabels(ts.Metric)
+		if err != nil {
+			return fmt.Errorf("cannot get container ID from labels: %v", ts.Metric)
+		}
+
+		newSamples := getContainerUsageSamplesFromSamples(ts.Values, resource)
+
+		podHistory, ok := res[containerID.PodID]
+		if !ok {
+			podHistory = newEmptyHistory()
+			res[containerID.PodID] = podHistory
+		}
+		podHistory.Samples[containerID.ContainerName] = append(
+			podHistory.Samples[containerID.ContainerName],
+			newSamples...)
+
+	}
+
+	// 3. Iterate and Format the Matrix
+	fmt.Println("\n--- Formatted Query Results ---")
+
+	// Iterate over each time series (stream) in the Matrix
+	for i, stream := range matrix {
+		// stream.Metric contains the labels
+		fmt.Printf("Stream %d: Metric %s\n", i+1, stream.Metric.String())
+
+		// Iterate over each data point (SamplePair) in the time series
+		for _, pair := range stream.Values {
+			// Convert model.Time to standard Go time.Time for human-readable output
+			timestamp := pair.Timestamp.Time()
+
+			// Format the output
+			fmt.Printf("  -> Time: %s, Value: %f\n",
+				timestamp.Format("2006-01-02 15:04:05"),
+				pair.Value)
+		}
+	}
+	fmt.Println("-------------------------------")
+
+	return nil
+}
+
+// private SLA readSLA() {
+//     Timestamp now = DateUtils.now();
+//     Long difference = now.getTime() - startDate.getTime();
+//     Long minutes = (difference / 1000 / 60) + 1;
+
+//     RequestEntity<Void> request = buildRequest("sum(rate(request_duration_bucket{le=\"1.0\", app=\"demo1\"}["+minutes+"m]))/ignoring(le)sum(rate(request_duration_count{app=\"demo1\"}["+minutes+"m]))*100");
+
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     SLA sla = parseSLA(result.getBody());
+//     System.out.println(sla);
+
+//     return sla;
+// }
+
+// private AvgResponse readAvgResponseTime() {
+//     RequestEntity<Void> request = buildRequest("sum(rate(request_duration_sum{app=\"demo1\"}[30s]))/sum(rate(request_duration_count{app=\"demo1\"}[30s]))*1000");
+
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     AvgResponse avgResponse = parseAvgResponse(result.getBody());
+
+//     return avgResponse;
+// }
+
+// private BTCount readMetrics()  {
+//     RequestEntity<Void> request = buildRequest("sum by (demo1) (rate(bt_count_total{app=\"demo1\"}[30s]))");
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     BTCount btCount = parseBTCount(result.getBody());
+//     System.out.println(btCount);
+//     return btCount;
+// }
+
+// private AvgCPU readAvgCPULoad()  {
+//     RequestEntity<Void> request = buildRequest("avg(rate(container_cpu_usage_seconds_total{container=\"demo1\"}[45s]) * on (pod) group_left kube_pod_container_status_ready{container=\"demo1\"} > 0)");
+
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     AvgCPU avgCpu = parseAvgCPU(result.getBody());
+//     System.out.println(avgCpu);
+
+//     return avgCpu;
+
+// }
+
+// private RequestEntity<Void> buildRequest(String url) {
+//     try {
+//         StringBuilder builder = new StringBuilder(prometheusURL+"api/v1/query");
+//         builder.append("?query=");
+//         builder.append(URLEncoder.encode(url,StandardCharsets.UTF_8.toString()));
+//         URI uri = URI.create(builder.toString());
+
+//         return RequestEntity.get(uri).accept(MediaType.APPLICATION_JSON).build();
+//     } catch (UnsupportedEncodingException e) {
+//         System.out.println(e.getMessage());
+//         throw new RuntimeException(e);
+//     }
+
+// }
+
+// private PodCount readPodCount()  {
+//     RequestEntity<Void> request = buildRequest("count(kube_pod_info{pod=~\"demo1-.*\"} * on (pod) group_left kube_pod_container_status_ready{container=\"demo1\"} > 0)");
+
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     PodCount podCount = parsePodCount(result.getBody());
+//     System.out.println(podCount);
+//     return podCount;
+// }
+
+// private PodUpTime readPodUpTime()  {
+//     Timestamp now = DateUtils.now();
+//     Long difference = now.getTime() - startDate.getTime();
+//     Long minutes = (difference / 1000 / 60) + 1;
+
+//     RequestEntity<Void> request = buildRequest("sum(sum_over_time( kube_pod_info{pod=~\"demo1-.*\"}["+minutes+"m]) * 60)");
+
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     PodUpTime podUpTime = parsePodUpTyime(result.getBody());
+//     System.out.println(podUpTime);
+//     return podUpTime;
+// }
+
+// private BTTotal readBTTotal()  {
+//     RequestEntity<Void> request = buildRequest("sum by (demo1) (bt_count_total{app=\"demo1\"})");
+//     ResponseEntity<HashMap<String, Object>> result = restTemplate.exchange(request, responseType);
+//     System.out.println(result.getBody());
+//     BTTotal btCount = parseBTTotal(result.getBody());
+//     System.out.println(btCount);
+//     return btCount;
+// }

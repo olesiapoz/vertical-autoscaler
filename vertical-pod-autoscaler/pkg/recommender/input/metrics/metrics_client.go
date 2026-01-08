@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	k8sapiv1 "k8s.io/api/core/v1"
@@ -64,6 +65,7 @@ func NewMetricsClient(source PodMetricsLister, namespace, clientName string) Met
 	}
 }
 
+// TODS: PHD gets metrics snapshot
 func (c *metricsClient) GetContainersMetrics(ctx context.Context) ([]*ContainerMetricsSnapshot, error) {
 	var metricsSnapshots []*ContainerMetricsSnapshot
 
@@ -81,7 +83,14 @@ func (c *metricsClient) GetContainersMetrics(ctx context.Context) ([]*ContainerM
 	for _, podMetrics := range podMetricsList.Items {
 		metricsSnapshotsForPod := createContainerMetricsSnapshots(podMetrics)
 		metricsSnapshots = append(metricsSnapshots, metricsSnapshotsForPod...)
+
+		fmt.Println(" --- Formatted Query Results FOR SNAPSHOT ---")
+		klog.V(4).Infof("Aggregated %d container metrics snapshots for pod %s/%s",
+			len(metricsSnapshotsForPod), podMetrics.Namespace, podMetrics.Name)
+		klog.V(5).Infof("Container Snapshots: %+v", metricsSnapshotsForPod)
+		fmt.Println(" ------------------------------------")
 	}
+
 	return metricsSnapshots, nil
 }
 
@@ -89,6 +98,9 @@ func createContainerMetricsSnapshots(podMetrics v1beta1.PodMetrics) []*Container
 	snapshots := make([]*ContainerMetricsSnapshot, len(podMetrics.Containers))
 	for i, containerMetrics := range podMetrics.Containers {
 		snapshots[i] = newContainerMetricsSnapshot(containerMetrics, podMetrics)
+		fmt.Printf("Container Metric for POD: %s", containerMetrics.Name)
+		fmt.Printf("Container Metric CPU: %s", containerMetrics.Usage.Cpu)
+		fmt.Printf("Container Metric Memory: %s", containerMetrics.Usage.Memory())
 	}
 	return snapshots
 }

@@ -42,6 +42,8 @@ const (
 	ResourceCPU ResourceName = "cpu"
 	// ResourceMemory represents memory, in bytes. (500Gi = 500GiB = 500 * 1024 * 1024 * 1024).
 	ResourceMemory ResourceName = "memory"
+	//Resource SLA amount of requests processes in time
+	ResourceSLA ResourceName = "SLA"
 	// MaxResourceAmount is the maximum allowed value of resource amount.
 	MaxResourceAmount = ResourceAmount(1e14)
 )
