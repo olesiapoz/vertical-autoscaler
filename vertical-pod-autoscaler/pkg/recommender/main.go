@@ -308,54 +308,64 @@ func run(ctx context.Context, healthCheck *metrics.HealthCheck, commonFlag *comm
 	}.Make()
 	controllerFetcher.Start(ctx, scaleCacheLoopPeriod)
 
-	recommender := routines.RecommenderFactory{
-		ClusterState:                 clusterState,
-		ClusterStateFeeder:           clusterStateFeeder,
-		ControllerFetcher:            controllerFetcher,
-		CheckpointWriter:             checkpoint.NewCheckpointWriter(clusterState, vpa_clientset.NewForConfigOrDie(config).AutoscalingV1()),
-		VpaClient:                    vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
-		PodResourceRecommender:       logic.CreatePodResourceRecommender(),
-		RecommendationPostProcessors: postProcessors,
-		CheckpointsGCInterval:        *checkpointsGCInterval,
-		UseCheckpoints:               useCheckpoints,
-		UpdateWorkerCount:            *updateWorkerCount,
-	}.Make()
-
 	promQueryTimeout, err := time.ParseDuration(*queryTimeout)
 	if err != nil {
 		klog.ErrorS(err, "Could not parse --prometheus-query-timeout as a time.Duration")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
+	prometheusHistoryProviderConfig := history.PrometheusHistoryProviderConfig{
+		Address:                *prometheusAddress,
+		Insecure:               *prometheusInsecure,
+		QueryTimeout:           promQueryTimeout,
+		HistoryLength:          *historyLength,
+		HistoryResolution:      *historyResolution,
+		PodLabelPrefix:         *podLabelPrefix,
+		PodLabelsMetricName:    *podLabelsMetricName,
+		PodNamespaceLabel:      *podNamespaceLabel,
+		PodNameLabel:           *podNameLabel,
+		CtrNamespaceLabel:      *ctrNamespaceLabel,
+		CtrPodNameLabel:        *ctrPodNameLabel,
+		CtrNameLabel:           *ctrNameLabel,
+		CadvisorMetricsJobName: *prometheusJobName,
+		Namespace:              commonFlag.VpaObjectNamespace,
+		Authentication: history.PrometheusCredentials{
+			BearerToken: *prometheusBearerToken,
+			Username:    *username,
+			Password:    *password,
+		},
+	}
+
+	provider, err := history.NewPrometheusHistoryProvider(prometheusHistoryProviderConfig)
+	if err != nil {
+		klog.ErrorS(err, "Could not initialize history provider")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
+	var podResourceRecommender = logic.CreateSlaPodResourceRecommender(
+		logic.CreateSlaDataProvider(
+			provider.GetPrometheusClient(),
+			promQueryTimeout,
+		),
+		logic.CreatePodResourceRecommender(),
+	)
+
+	recommender := routines.RecommenderFactory{
+		ClusterState:                 clusterState,
+		ClusterStateFeeder:           clusterStateFeeder,
+		ControllerFetcher:            controllerFetcher,
+		CheckpointWriter:             checkpoint.NewCheckpointWriter(clusterState, vpa_clientset.NewForConfigOrDie(config).AutoscalingV1()),
+		VpaClient:                    vpa_clientset.NewForConfigOrDie(config).AutoscalingV1(),
+		PodResourceRecommender:       podResourceRecommender,
+		RecommendationPostProcessors: postProcessors,
+		CheckpointsGCInterval:        *checkpointsGCInterval,
+		UseCheckpoints:               useCheckpoints,
+		UpdateWorkerCount:            *updateWorkerCount,
+	}.Make()
+
 	if useCheckpoints {
 		recommender.GetClusterStateFeeder().InitFromCheckpoints(ctx)
 	} else {
-		config := history.PrometheusHistoryProviderConfig{
-			Address:                *prometheusAddress,
-			Insecure:               *prometheusInsecure,
-			QueryTimeout:           promQueryTimeout,
-			HistoryLength:          *historyLength,
-			HistoryResolution:      *historyResolution,
-			PodLabelPrefix:         *podLabelPrefix,
-			PodLabelsMetricName:    *podLabelsMetricName,
-			PodNamespaceLabel:      *podNamespaceLabel,
-			PodNameLabel:           *podNameLabel,
-			CtrNamespaceLabel:      *ctrNamespaceLabel,
-			CtrPodNameLabel:        *ctrPodNameLabel,
-			CtrNameLabel:           *ctrNameLabel,
-			CadvisorMetricsJobName: *prometheusJobName,
-			Namespace:              commonFlag.VpaObjectNamespace,
-			Authentication: history.PrometheusCredentials{
-				BearerToken: *prometheusBearerToken,
-				Username:    *username,
-				Password:    *password,
-			},
-		}
-		provider, err := history.NewPrometheusHistoryProvider(config)
-		if err != nil {
-			klog.ErrorS(err, "Could not initialize history provider")
-			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
-		}
 		recommender.GetClusterStateFeeder().InitFromHistoryProvider(provider)
 	}
 
