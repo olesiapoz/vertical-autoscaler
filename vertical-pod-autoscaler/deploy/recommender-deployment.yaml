@@ -19,9 +19,24 @@ spec:
         runAsNonRoot: true
         runAsUser: 65534 # nobody
       containers:
-      - name: recommender
-        image: registry.k8s.io/autoscaling/vpa-recommender:1.5.1
-        imagePullPolicy: IfNotPresent
+      - args:
+        - --v=4
+        - --storage=prometheus
+        - --prometheus-address=http://prom-kube-stack-kube-prome-prometheus.monitoring.svc.cluster.local:9090 
+        - --prometheus-cadvisor-job-name=kubelet
+        - --container-pod-name-label=pod
+        - --container-name-label=pod
+        - --pod-name-label=pod
+        - --pod-label-prefix=label
+        - --metric-for-pod-labels=kube_pod_labels{job="kube-state-metrics"}[100m]
+        - --container-namespace-label=namespace
+        - --container-name-label=pod
+        - --pod-namespace-label=namespace
+        - --history-length=200m
+        - --history-resolution=5m
+        name: recommender
+        image: olesiapoz/vpa-recommender-arm64:prom
+        imagePullPolicy: Always
         resources:
           limits:
             cpu: 200m

@@ -26,7 +26,7 @@ type slaPodResourceRecommender struct {
 }
 
 func (r *slaPodResourceRecommender) GetRecommendedPodResources(containerNameToAggregateStateMap model.ContainerNameToAggregateStateMap) RecommendedPodResources {
-	r.slaDataProvider.GetSlaData("")
+	r.slaDataProvider.GetSlaData("demo1")
 	return r.vanillaPodResourceRecommender.GetRecommendedPodResources(containerNameToAggregateStateMap)
 }
 

@@ -18,6 +18,7 @@ package logic
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -46,7 +47,10 @@ func (r *dataProvider) GetSlaData(containerName string) ([]SlaDataPoint, error) 
 		Step:  time.Minute,
 	}
 
-	data, _, err := r.prometheusClient.QueryRange(ctx, "", rangeQuery)
+	//query := fmt.Sprintf("container_cpu_usage_seconds_total{container=\"%s\"}", containerName)
+	slaQuery := fmt.Sprintf(`(sum by (container, pod, namespace) (rate(request_duration_bucket{le="3.0", container="%s", job="demo1-service"}[%dm])) / sum by (container, pod, namespace) (rate(request_duration_count{container="%s", job="demo1-service"}[%dm]))) * 100`,
+		containerName, int(rangeQuery.Step.Minutes()), containerName, int(rangeQuery.Step.Minutes()))
+	data, _, err := r.prometheusClient.QueryRange(ctx, slaQuery, rangeQuery)
 	if err != nil {
 		return nil, err
 	}
