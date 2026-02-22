@@ -47,12 +47,48 @@ func (r *dataProvider) GetSlaData(containerName string) ([]SlaDataPoint, error) 
 		Step:  time.Minute,
 	}
 
-	//query := fmt.Sprintf("container_cpu_usage_seconds_total{container=\"%s\"}", containerName)
-	slaQuery := fmt.Sprintf(`(sum by (container, pod, namespace) (rate(request_duration_bucket{le="3.0", container="%s", job="demo1-service"}[%dm])) / sum by (container, pod, namespace) (rate(request_duration_count{container="%s", job="demo1-service"}[%dm]))) * 100`,
-		containerName, int(rangeQuery.Step.Minutes()), containerName, int(rangeQuery.Step.Minutes()))
-	data, _, err := r.prometheusClient.QueryRange(ctx, slaQuery, rangeQuery)
-	if err != nil {
-		return nil, err
+	var byTimestamp = make(map[time.Time]SlaDataPoint, 0)
+
+	t := reflect.TypeOf(SlaDataPoint{})
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		queryName := field.Tag.Get("query")
+		if queryName == "" {
+			continue
+		}
+		queryTemplate, ok := queries[queryName]
+		if !ok {
+			return nil, fmt.Errorf("unknown query constant: %s", queryName)
+		}
+		query := fmt.Sprintf(queryTemplate, containerName)
+		data, _, err := r.prometheusClient.QueryRange(ctx, query, rangeQuery)
+		if err != nil {
+			return nil, err
+		}
+		matrix, ok := data.(prommodel.Matrix)
+		if !ok {
+			return nil, fmt.Errorf("unexpected data type: %T", data)
+		}
+		if len(matrix) == 0 {
+			// no data - no problem
+			continue
+		}
+		if len(matrix) != 1 {
+			return nil, fmt.Errorf("expecting single series: %s", query)
+		}
+		// iterate sample and merge data points
+		for _, value := range matrix[0].Values {
+			timestamp := value.Timestamp.Time()
+			point, exists := byTimestamp[timestamp]
+			if !exists {
+				point = SlaDataPoint{
+					Cpu: math.NaN(),
+					Sla: math.NaN(),
+				}
+			}
+			reflect.ValueOf(&point).Elem().FieldByName(field.Name).SetFloat(float64(value.Value))
+			byTimestamp[timestamp] = point
+		}
 	}
 	println(data)
 	return make([]SlaDataPoint, 0), nil
