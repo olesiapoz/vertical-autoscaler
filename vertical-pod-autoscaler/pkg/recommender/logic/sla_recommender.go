@@ -17,6 +17,7 @@ limitations under the License.
 package logic
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/autoscaler/vertical-pod-autoscaler/pkg/recommender/model"
@@ -29,9 +30,22 @@ type slaPodResourceRecommender struct {
 
 func (r *slaPodResourceRecommender) GetRecommendedPodResources(containerNameToAggregateStateMap model.ContainerNameToAggregateStateMap) RecommendedPodResources {
 	for containerName := range containerNameToAggregateStateMap {
-		println(r.slaDataProvider.GetSlaData(containerName, 1*time.Hour, 1*time.Minute))
+		data, err := r.slaDataProvider.GetSlaData(containerName, 1*time.Hour, 1*time.Minute)
+		if err != nil {
+			fmt.Printf("error fetching SLA data for %s: %v\n", containerName, err)
+			continue
+		}
+		printSlaData(data)
 	}
 	return r.vanillaPodResourceRecommender.GetRecommendedPodResources(containerNameToAggregateStateMap)
+}
+
+func printSlaData(data []TimestampedSlaDataPoint) {
+	fmt.Printf("| %-30s | %-10s | %-10s |\n", "timestamp", "cpu", "sla")
+	fmt.Printf("| %-30s | %-10s | %-10s |\n", "------------------------------", "----------", "----------")
+	for _, dp := range data {
+		fmt.Printf("| %-30s | %-10f | %-10f |\n", dp.timestamp.Format(time.RFC3339), dp.point.Cpu, dp.point.Sla)
+	}
 }
 
 func CreateSlaPodResourceRecommender(
