@@ -44,7 +44,7 @@ type SlaDataPoint struct {
 }
 
 type SlaDataProvider interface {
-	GetSlaData(containerName string) ([]TimestampedSlaDataPoint, error)
+	GetSlaData(containerName string, durationFromNow time.Duration, step time.Duration) ([]TimestampedSlaDataPoint, error)
 }
 
 type dataProvider struct {
@@ -52,15 +52,15 @@ type dataProvider struct {
 	queryTimeout     time.Duration
 }
 
-func (r *dataProvider) GetSlaData(containerName string) ([]TimestampedSlaDataPoint, error) {
+func (r *dataProvider) GetSlaData(containerName string, durationFromNow time.Duration, step time.Duration) ([]TimestampedSlaDataPoint, error) {
 	//this is wrong in so many ways, but it's a good start
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
 	defer cancel()
 
 	rangeQuery := prometheusv1.Range{
-		Start: time.Now().Add(-time.Hour),
+		Start: time.Now().Add(-durationFromNow),
 		End:   time.Now(),
-		Step:  time.Minute,
+		Step:  step,
 	}
 
 	var byTimestamp = make(map[time.Time]SlaDataPoint, 0)

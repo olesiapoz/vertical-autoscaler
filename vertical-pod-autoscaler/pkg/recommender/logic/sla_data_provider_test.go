@@ -58,7 +58,7 @@ func TestGetSlaNoDataSuccess(t *testing.T) {
 	mockClient.On("QueryRange", mock.Anything, expectedSlaQuery, mock.AnythingOfType("v1.Range")).Return(
 		prommodel.Matrix{}, nil).Once()
 
-	result, err := provider.GetSlaData("demo1")
+	result, err := provider.GetSlaData("demo1", time.Hour, time.Minute)
 	assert.Nil(t, err)
 	assert.NotNil(t, result)
 	mockClient.AssertExpectations(t)
@@ -89,7 +89,7 @@ func TestGetSlaDataSingleSeriesSuccess(t *testing.T) {
 	mockClient.On("QueryRange", mock.Anything, expectedSlaQuery, mock.AnythingOfType("v1.Range")).Return(
 		singleSeries, nil).Once()
 
-	result, err := provider.GetSlaData("demo1")
+	result, err := provider.GetSlaData("demo1", time.Hour, time.Minute)
 	assert.Nil(t, err)
 	assert.Len(t, result, 1)
 	assert.Equal(t, ts.Time(), result[0].timestamp)
@@ -106,7 +106,7 @@ func TestGetSlaDataPrometheusError(t *testing.T) {
 	mockClient.On("QueryRange", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("v1.Range")).Return(
 		nil, errors.New("prometheus error"))
 
-	_, err := provider.GetSlaData("demo1")
+	_, err := provider.GetSlaData("demo1", time.Hour, time.Minute)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "prometheus error")
 }
@@ -126,7 +126,7 @@ func TestGetSlaDataMultipleSeriesError(t *testing.T) {
 	mockClient.On("QueryRange", mock.Anything, mock.AnythingOfType("string"), mock.AnythingOfType("v1.Range")).Return(
 		multiSeries, nil)
 
-	_, err := provider.GetSlaData("demo1")
+	_, err := provider.GetSlaData("demo1", time.Hour, time.Minute)
 	assert.NotNil(t, err)
 	assert.Contains(t, err.Error(), "expecting single series")
 }
