@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -72,11 +73,19 @@ func TestGetSlaDataSingleSeriesSuccess(t *testing.T) {
 	}
 
 	ts := prommodel.TimeFromUnix(1000)
-	singleSeries := prommodel.Matrix{
+	cpuSeries := prommodel.Matrix{
 		&prommodel.SampleStream{
 			Metric: prommodel.Metric{"container": "demo1"},
 			Values: []prommodel.SamplePair{
 				{Timestamp: ts, Value: 42.0},
+			},
+		},
+	}
+	slaSeries := prommodel.Matrix{
+		&prommodel.SampleStream{
+			Metric: prommodel.Metric{"container": "demo1"},
+			Values: []prommodel.SamplePair{
+				{Timestamp: ts, Value: 99.0},
 			},
 		},
 	}
@@ -85,14 +94,67 @@ func TestGetSlaDataSingleSeriesSuccess(t *testing.T) {
 	expectedSlaQuery := fmt.Sprintf(queries["SlaQuery"], "demo1")
 
 	mockClient.On("QueryRange", mock.Anything, expectedCpuQuery, mock.AnythingOfType("v1.Range")).Return(
-		singleSeries, nil).Once()
+		cpuSeries, nil).Once()
 	mockClient.On("QueryRange", mock.Anything, expectedSlaQuery, mock.AnythingOfType("v1.Range")).Return(
-		singleSeries, nil).Once()
+		slaSeries, nil).Once()
 
 	result, err := provider.GetSlaData("demo1", time.Hour, time.Minute)
 	assert.Nil(t, err)
 	assert.Len(t, result, 1)
 	assert.Equal(t, ts.Time(), result[0].timestamp)
+	assert.Equal(t, 42.0, result[0].point.Cpu)
+	assert.Equal(t, 99.0, result[0].point.Sla)
+	mockClient.AssertExpectations(t)
+}
+
+func TestGetSlaDataDifferentTimestampBuckets(t *testing.T) {
+	mockClient := &mockPrometheusAPI{}
+	provider := &dataProvider{
+		prometheusClient: mockClient,
+		queryTimeout:     10 * time.Second,
+	}
+
+	ts1 := prommodel.TimeFromUnix(1000)
+	ts2 := prommodel.TimeFromUnix(2000)
+
+	cpuSeries := prommodel.Matrix{
+		&prommodel.SampleStream{
+			Metric: prommodel.Metric{"container": "demo1"},
+			Values: []prommodel.SamplePair{
+				{Timestamp: ts1, Value: 42.0},
+			},
+		},
+	}
+	slaSeries := prommodel.Matrix{
+		&prommodel.SampleStream{
+			Metric: prommodel.Metric{"container": "demo1"},
+			Values: []prommodel.SamplePair{
+				{Timestamp: ts2, Value: 99.0},
+			},
+		},
+	}
+
+	expectedCpuQuery := fmt.Sprintf(queries["CpuQuery"], "demo1")
+	expectedSlaQuery := fmt.Sprintf(queries["SlaQuery"], "demo1")
+
+	mockClient.On("QueryRange", mock.Anything, expectedCpuQuery, mock.AnythingOfType("v1.Range")).Return(
+		cpuSeries, nil).Once()
+	mockClient.On("QueryRange", mock.Anything, expectedSlaQuery, mock.AnythingOfType("v1.Range")).Return(
+		slaSeries, nil).Once()
+
+	result, err := provider.GetSlaData("demo1", time.Hour, time.Minute)
+	assert.Nil(t, err)
+	assert.Len(t, result, 2)
+
+	// result is sorted by timestamp
+	assert.Equal(t, ts1.Time(), result[0].timestamp)
+	assert.Equal(t, 42.0, result[0].point.Cpu)
+	assert.True(t, math.IsNaN(result[0].point.Sla))
+
+	assert.Equal(t, ts2.Time(), result[1].timestamp)
+	assert.True(t, math.IsNaN(result[1].point.Cpu))
+	assert.Equal(t, 99.0, result[1].point.Sla)
+
 	mockClient.AssertExpectations(t)
 }
 
