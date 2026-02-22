@@ -19,16 +19,32 @@ package logic
 import (
 	"context"
 	"fmt"
+	"math"
+	"reflect"
+	"sort"
 	"time"
 
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	prommodel "github.com/prometheus/common/model"
 )
 
+var queries = map[string]string{
+	"CpuQuery": `sum by (container, pod, namespace) (rate(container_cpu_usage_seconds_total{container="%s", job="demo1-service"}[1m]))`,
+	"SlaQuery": `container_cpu_usage_seconds_total{container="%s"}`,
+}
+
+type TimestampedSlaDataPoint struct {
+	timestamp time.Time
+	point     *SlaDataPoint
+}
+
 type SlaDataPoint struct {
+	Cpu float64 `query:"CpuQuery"`
+	Sla float64 `query:"SlaQuery"`
 }
 
 type SlaDataProvider interface {
-	GetSlaData(containerName string) ([]SlaDataPoint, error)
+	GetSlaData(containerName string) ([]TimestampedSlaDataPoint, error)
 }
 
 type dataProvider struct {
@@ -36,7 +52,7 @@ type dataProvider struct {
 	queryTimeout     time.Duration
 }
 
-func (r *dataProvider) GetSlaData(containerName string) ([]SlaDataPoint, error) {
+func (r *dataProvider) GetSlaData(containerName string) ([]TimestampedSlaDataPoint, error) {
 	//this is wrong in so many ways, but it's a good start
 	ctx, cancel := context.WithTimeout(context.Background(), r.queryTimeout)
 	defer cancel()
@@ -90,8 +106,19 @@ func (r *dataProvider) GetSlaData(containerName string) ([]SlaDataPoint, error) 
 			byTimestamp[timestamp] = point
 		}
 	}
-	println(data)
-	return make([]SlaDataPoint, 0), nil
+	// put and order by timestamp
+	result := make([]TimestampedSlaDataPoint, 0)
+	for timestamp, point := range byTimestamp {
+		result = append(result, TimestampedSlaDataPoint{
+			timestamp: timestamp,
+			point:     &point,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].timestamp.Before(result[j].timestamp)
+	})
+
+	return result, nil
 }
 
 func CreateSlaDataProvider(
