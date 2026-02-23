@@ -30,9 +30,14 @@ type slaPodResourceRecommender struct {
 
 func (r *slaPodResourceRecommender) GetRecommendedPodResources(containerNameToAggregateStateMap model.ContainerNameToAggregateStateMap) RecommendedPodResources {
 	for containerName := range containerNameToAggregateStateMap {
+		// pass containerName (not pod name)
 		data, err := r.slaDataProvider.GetSlaData(containerName, 1*time.Hour, 1*time.Minute)
 		if err != nil {
 			fmt.Printf("error fetching SLA data for %s: %v\n", containerName, err)
+			continue
+		}
+		if len(data) == 0 {
+			fmt.Printf("no SLA data for container %s\n", containerName)
 			continue
 		}
 		printSlaData(data)
@@ -41,10 +46,11 @@ func (r *slaPodResourceRecommender) GetRecommendedPodResources(containerNameToAg
 }
 
 func printSlaData(data []TimestampedSlaDataPoint) {
-	fmt.Printf("| %-30s | %-10s | %-10s |\n", "timestamp", "cpu", "sla")
-	fmt.Printf("| %-30s | %-10s | %-10s |\n", "------------------------------", "----------", "----------")
+	fmt.Printf("\nSLA Data:\n")
+	fmt.Printf("| %-30s | %-10s | %-10s |%-10s | %-10s |%-10s |\n", "timestamp", "cpu", "sla", "AvgRT", "BTCount", "Pods")
+	fmt.Printf("| %-30s | %-10s | %-10s |%-10s | %-10s |%-10s |\n", "------------------------------", "----------", "----------", "----------", "----------", "----------")
 	for _, dp := range data {
-		fmt.Printf("| %-30s | %-10f | %-10f |\n", dp.timestamp.Format(time.RFC3339), dp.point.Cpu, dp.point.Sla)
+		fmt.Printf("| %-30s | %-10f | %-10f |%-10f | %-10f |%-10f |\n", dp.timestamp.Format(time.RFC3339), dp.point.Cpu, dp.point.Sla, dp.point.AvgRT, dp.point.BTCount, dp.point.Pods)
 	}
 }
 

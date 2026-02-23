@@ -22,6 +22,8 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	prometheusv1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -29,8 +31,13 @@ import (
 )
 
 var queries = map[string]string{
-	"CpuQuery": `sum by (container, pod, namespace) (rate(container_cpu_usage_seconds_total{container="%s", job="demo1-service"}[1m]))`,
-	"SlaQuery": `container_cpu_usage_seconds_total{container="%s"}`,
+	// only use %s for label values; groupings are fixed
+	"CpuQuery":     `avg(rate(container_cpu_usage_seconds_total{container=%s}[1m]) * on (pod) group_left kube_pod_container_status_ready{container=%s} > 0)`,
+	"SlaQuery":     `(sum by (container, pod, namespace) (rate(request_duration_bucket{le="3.0", container=%s, job="demo1-service"}[15m])) / sum by (container, pod, namespace) (rate(request_duration_count{container=%s, job="demo1-service"}[15m]))) * 100`,
+	"AvgRTQuery":   `(sum by (container, pod, namespace) (rate(request_duration_sum{container=%s, job="demo1-service"}[1m])) / sum by (container, pod, namespace) (rate(request_duration_count{container=%s, job="demo1-service"}[1m])))`,
+	"BTCountQuery": `sum by (container) (rate(bt_count_total{container=%s, job="demo1-service"}[1m]))`,
+	// count ready containers by container label only
+	"PodContainerCountQuery": `count(kube_pod_container_status_ready{container=%s, condition="true"})`,
 }
 
 type TimestampedSlaDataPoint struct {
@@ -39,8 +46,11 @@ type TimestampedSlaDataPoint struct {
 }
 
 type SlaDataPoint struct {
-	Cpu float64 `query:"CpuQuery"`
-	Sla float64 `query:"SlaQuery"`
+	Cpu     float64 `query:"CpuQuery"`
+	Sla     float64 `query:"SlaQuery"`
+	AvgRT   float64 `query:"AvgRTQuery"`
+	BTCount float64 `query:"BTCountQuery"`
+	Pods    float64 `query:"PodContainerCountQuery"`
 }
 
 type SlaDataProvider interface {
@@ -76,7 +86,19 @@ func (r *dataProvider) GetSlaData(containerName string, durationFromNow time.Dur
 		if !ok {
 			return nil, fmt.Errorf("unknown query constant: %s", queryName)
 		}
-		query := fmt.Sprintf(queryTemplate, containerName)
+
+		// build args matching number of %s placeholders and always pass quoted container name
+		placeholderCount := strings.Count(queryTemplate, "%s")
+		args := make([]interface{}, placeholderCount)
+		quoted := strconv.Quote(containerName)
+		for j := 0; j < placeholderCount; j++ {
+			args[j] = quoted
+		}
+		query := fmt.Sprintf(queryTemplate, args...)
+
+		fmt.Printf("\nExecuting query for %s of container: %s\n", field.Name, containerName)
+		fmt.Printf("Executing query for %s: %s\n", field.Name, query)
+
 		data, _, err := r.prometheusClient.QueryRange(ctx, query, rangeQuery)
 		if err != nil {
 			return nil, err
@@ -98,8 +120,11 @@ func (r *dataProvider) GetSlaData(containerName string, durationFromNow time.Dur
 			point, exists := byTimestamp[timestamp]
 			if !exists {
 				point = SlaDataPoint{
-					Cpu: math.NaN(),
-					Sla: math.NaN(),
+					Cpu:     math.NaN(),
+					Sla:     math.NaN(),
+					AvgRT:   math.NaN(),
+					BTCount: math.NaN(),
+					Pods:    math.NaN(),
 				}
 			}
 			reflect.ValueOf(&point).Elem().FieldByName(field.Name).SetFloat(float64(value.Value))
