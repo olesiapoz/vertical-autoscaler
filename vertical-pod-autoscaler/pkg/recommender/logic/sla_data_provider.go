@@ -32,12 +32,28 @@ import (
 
 var queries = map[string]string{
 	// only use %s for label values; groupings are fixed
-	"CpuQuery":     `avg(rate(container_cpu_usage_seconds_total{container=%s}[1m]) * on (pod) group_left kube_pod_container_status_ready{container=%s} > 0)`,
-	"SlaQuery":     `(sum by (container, pod, namespace) (rate(request_duration_bucket{le="3.0", container=%s, job="demo1-service"}[15m])) / sum by (container, pod, namespace) (rate(request_duration_count{container=%s, job="demo1-service"}[15m]))) * 100`,
-	"AvgRTQuery":   `(sum by (container, pod, namespace) (rate(request_duration_sum{container=%s, job="demo1-service"}[1m])) / sum by (container, pod, namespace) (rate(request_duration_count{container=%s, job="demo1-service"}[1m])))`,
-	"BTCountQuery": `sum by (container) (rate(bt_count_total{container=%s, job="demo1-service"}[1m]))`,
+	"MemoryQuery": `container_memory_working_set_bytes{pod=%s}`,
+	"CpuQuery":    `sum(rate(container_cpu_usage_seconds_total{pod=%s}[1m]))`,
+	"AvgCpuQuery": `avg(rate(container_cpu_usage_seconds_total{pod=%s}[1m]) * on (pod) group_left kube_pod_container_status_ready{pod=%s} > 0)`,
+	"SlaQuery":    `(sum (rate(request_duration_bucket{le="2.0", pod=%s, job="demo1-service"}[600m])) / sum (rate(request_duration_count{pod=%s, job="demo1-service"}[600m]))) * 100`,
+	// Revritw SLA per percentile
+	// "sum(rate(request_duration_bucket{le=\""+RESPONSE_TIME+"\", app=\"demo1\"}["+minutes+"m]))/ignoring(le)sum(rate(request_duration_count{app=\"demo1\"}["+minutes+"m]))*100");
+	"AvgRTQuery":   `(sum (rate(request_duration_sum{pod=%s, job="demo1-service"}[1m])) / sum (rate(request_duration_count{pod=%s, job="demo1-service"}[1m])))`,
+	"RTQuery":      `histogram_quantile(0.97, sum(rate(request_duration_bucket{pod=%s}[1m])) by (le))*1000`,
+	"BTCountQuery": `sum by (pod) (rate(bt_count_total{pod=%s, job="demo1-service"}[1m]))`,
 	// count ready containers by container label only
-	"PodContainerCountQuery": `count(kube_pod_container_status_ready{container=%s, condition="true"})`,
+	"PodContainerCountQuery": `count(kube_pod_container_status_ready{container="demo1"})`,
+
+	// // POD based alabels
+	// 	// only use %s for label values; groupings are fixed
+	// "MemoryQuery":  `container_memory_working_set_bytes{pod=%s}`,
+	// "CpuQuery":     `rate(container_cpu_usage_seconds_total{pod=%s}[1m])`,
+	// "AvgCpuQuery":  `avg(rate(container_cpu_usage_seconds_total{pod=%s}[1m]) * on (pod) group_left kube_pod_container_status_ready{pod=%s} > 0)`,
+	// "SlaQuery":     `(sum (rate(request_duration_bucket{le="2.0", pod=%s, job="demo1-service"}[600m])) / sum (rate(request_duration_count{pod=%s, job="demo1-service"}[600m]))) * 100`,
+	// "AvgRTQuery":   `(sum (rate(request_duration_sum{pod=%s, job="demo1-service"}[1m])) / sum (rate(request_duration_count{pod=%s, job="demo1-service"}[1m])))`,
+	// "BTCountQuery": `sum by (pod) (rate(bt_count_total{pod=%s, job="demo1-service"}[1m]))`,
+	// // count ready containers by container label only
+	// "PodContainerCountQuery": `count(kube_pod_container_status_ready{container="demo1"})`,
 }
 
 type TimestampedSlaDataPoint struct {
@@ -47,8 +63,11 @@ type TimestampedSlaDataPoint struct {
 
 type SlaDataPoint struct {
 	Cpu     float64 `query:"CpuQuery"`
+	AvgCpu  float64 `query:"AvgCpuQuery"`
+	Memory  float64 `query:"MemoryQuery"`
 	Sla     float64 `query:"SlaQuery"`
 	AvgRT   float64 `query:"AvgRTQuery"`
+	RT      float64 `query:"RTQuery"`
 	BTCount float64 `query:"BTCountQuery"`
 	Pods    float64 `query:"PodContainerCountQuery"`
 }
@@ -120,8 +139,11 @@ func (r *dataProvider) GetSlaData(containerName string, durationFromNow time.Dur
 			point, exists := byTimestamp[timestamp]
 			if !exists {
 				point = SlaDataPoint{
+					Memory:  math.NaN(),
+					AvgCpu:  math.NaN(),
 					Cpu:     math.NaN(),
 					Sla:     math.NaN(),
+					RT:      math.NaN(),
 					AvgRT:   math.NaN(),
 					BTCount: math.NaN(),
 					Pods:    math.NaN(),
