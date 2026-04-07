@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo1
+  labels:
+    app: demo1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: demo1
+  template:
+    metadata:
+      labels:
+        app: demo1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "30036"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: demo1
+          resizePolicy:
+          - resourceName: "cpu"
+            restartPolicy: "NotRequired" # This is the magic line
+          - resourceName: "memory"
+            restartPolicy: "NotRequired"
+          image: olesiapoz/cat_noir
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 30036
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 30036
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 30036
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "256m"
+            limits:
+              memory: "512Mi"
+              cpu: "256m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo1-service
+spec:
+  type: NodePort
+  selector:
+    app: demo1
+  ports:
+    - name: http
+      protocol: TCP
+      port: 30036
+      targetPort: 30036
+      nodePort: 30036
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: demo1
+  labels:
+    release: kube-prometheus-stack # Ensure this matches your Prometheus selector
+spec:
+  selector:
+    matchLabels:
+      app: demo1 # Labels on your application pod
+  podMetricsEndpoints:
+    - port: http # The name of the port in your pod spec
+      path: /metrics
+      interval: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    release: kube-prometheus-stack # Ensure this matches your Prometheus selector
+  name: demo1
+spec:
+  endpoints:
+    - path: /metrics
+      port: http
+  selector:
+    matchLabels:
+      app: demo1
+
+---
+apiVersion: "autoscaling.k8s.io/v1"
+kind: VerticalPodAutoscaler
+metadata:
+  name: demo-vpa
+spec:
+  # recommenders field can be unset when using the default recommender.
+  # When using an alternative recommender, the alternative recommender's name
+  # can be specified as the following in a list.
+  # recommenders:
+  #   - name: 'alternative'
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: demo1
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: "*"
+        minAllowed:
+          cpu: 100m
+          memory: 50Mi
+        maxAllowed:
+          cpu: 512m
+          memory: 256Mi
+        controlledResources: ["cpu", "memory"]

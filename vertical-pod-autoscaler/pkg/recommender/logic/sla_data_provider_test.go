@@ -51,8 +51,8 @@ func TestGetSlaNoDataSuccess(t *testing.T) {
 		queryTimeout:     10 * time.Second,
 	}
 
-	expectedCpuQuery := fmt.Sprintf(queries["CpuQuery"], "demo1")
-	expectedSlaQuery := fmt.Sprintf(queries["SlaQuery"], "demo1")
+	expectedCpuQuery := fmt.Sprintf(queries["CpuQuery"], "demo1", "demo1")
+	expectedSlaQuery := fmt.Sprintf(queries["SlaQuery"], "demo1", "demo1")
 
 	mockClient.On("QueryRange", mock.Anything, expectedCpuQuery, mock.AnythingOfType("v1.Range")).Return(
 		prommodel.Matrix{}, nil).Once()

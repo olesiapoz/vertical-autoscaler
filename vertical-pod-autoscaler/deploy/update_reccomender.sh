@@ -17,4 +17,4 @@ fi
 
 echo "Executing logs"
 
-kubectl logs -n kube-system -f $pod_name | grep "SLA Data for demo Ag" -B 1 -A 100
+kubectl logs -n kube-system -f $pod_name 

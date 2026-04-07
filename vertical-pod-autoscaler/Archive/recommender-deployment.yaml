@@ -4,10 +4,6 @@ kind: Deployment
 metadata:
   name: vpa-recommender
   namespace: kube-system
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8942"
-    prometheus.io/path: "/metrics"
 spec:
   replicas: 1
   selector:
@@ -39,9 +35,6 @@ spec:
             - --history-length=200m
             - --history-resolution=5m
           name: recommender
-          volumeMounts:
-          - name: data-storage
-            mountPath: /tmp/
           image: olesiapoz/vpa-recommender-arm64:prom
           imagePullPolicy: Always
           resources:
@@ -69,11 +62,3 @@ spec:
               scheme: HTTP
             periodSeconds: 10
             failureThreshold: 3
-      volumes:
-      # - name: data-storage
-      #   emptyDir: {}
-      - name: data-storage
-        hostPath:
-          path: /Users/opo/University/Article  # A folder on your Mac
-          type: DirectoryOrCreate
-      

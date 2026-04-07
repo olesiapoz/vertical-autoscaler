@@ -22,7 +22,6 @@ import (
 	"math"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,17 +31,21 @@ import (
 
 var queries = map[string]string{
 	// only use %s for label values; groupings are fixed
-	"MemoryQuery": `container_memory_working_set_bytes{pod=%s}`,
-	"CpuQuery":    `sum(rate(container_cpu_usage_seconds_total{pod=%s}[1m]))`,
-	"AvgCpuQuery": `avg(rate(container_cpu_usage_seconds_total{pod=%s}[1m]) * on (pod) group_left kube_pod_container_status_ready{pod=%s} > 0)`,
-	"SlaQuery":    `(sum (rate(request_duration_bucket{le="2.0", pod=%s, job="demo1-service"}[600m])) / sum (rate(request_duration_count{pod=%s, job="demo1-service"}[600m]))) * 100`,
+	"MemoryQuery":       `avg(container_memory_working_set_bytes{pod=~"%s-.*"})`,
+	"MemoryLimitsQuery": `avg(kube_pod_container_resource_limits{resource="memory", container="%s"})`,
+	//"CpuQuery":    `sum(rate(container_cpu_usage_seconds_total{pod=~"%s-.*"}[1m])) * 1000`,
+	"CpuQuery":       `avg(rate(container_cpu_usage_seconds_total{container="%s", namespace!=""}[1m]) * on (pod) group_left kube_pod_container_status_ready{container="%s"} > 0) / avg(kube_pod_container_resource_limits{resource="cpu", container="%s"}) * 100`,
+	"AvgCpuQuery":    `avg(rate(container_cpu_usage_seconds_total{pod=~"%s-.*"}[1m]) * on (pod) group_left kube_pod_container_status_ready{pod=~"%s-.*"} > 0)`,
+	"MaxCpuQuery":    `max(rate(container_cpu_usage_seconds_total{container="%s", namespace!=""}[1m]) * on (pod) group_left kube_pod_container_status_ready{container="%s"} > 0) / avg(kube_pod_container_resource_limits{resource="cpu", container="%s"}) * 100`,
+	"SlaQuery":       `(sum (rate(request_duration_bucket{le="3.0", container="%s"}[1800m])) / sum (rate(request_duration_count{container="%s"}[1800m]))) * 100`,
+	"CpuLimitsQuery": `avg(kube_pod_container_resource_limits{resource="cpu", container="%s"})`,
 	// Revritw SLA per percentile
 	// "sum(rate(request_duration_bucket{le=\""+RESPONSE_TIME+"\", app=\"demo1\"}["+minutes+"m]))/ignoring(le)sum(rate(request_duration_count{app=\"demo1\"}["+minutes+"m]))*100");
-	"AvgRTQuery":   `(sum (rate(request_duration_sum{pod=%s, job="demo1-service"}[1m])) / sum (rate(request_duration_count{pod=%s, job="demo1-service"}[1m])))`,
-	"RTQuery":      `histogram_quantile(0.97, sum(rate(request_duration_bucket{pod=%s}[1m])) by (le))*1000`,
-	"BTCountQuery": `sum by (pod) (rate(bt_count_total{pod=%s, job="demo1-service"}[1m]))`,
+	"AvgRTQuery":   `(sum (rate(request_duration_sum{container="%s"}[1m])) / sum (rate(request_duration_count{container="%s"}[1m])))`,
+	"RTQuery":      `histogram_quantile(0.99, sum(rate(request_duration_bucket{container="%s"}[1m])) by (le))`,
+	"BTCountQuery": `sum by ("%s") (rate(bt_count_total{container="%s"}[1m]))`,
 	// count ready containers by container label only
-	"PodContainerCountQuery": `count(kube_pod_container_status_ready{container="demo1"})`,
+	"PodContainerCountQuery": `count(kube_pod_container_status_ready{container="%s"})`,
 
 	// // POD based alabels
 	// 	// only use %s for label values; groupings are fixed
@@ -62,14 +65,17 @@ type TimestampedSlaDataPoint struct {
 }
 
 type SlaDataPoint struct {
-	Cpu     float64 `query:"CpuQuery"`
-	AvgCpu  float64 `query:"AvgCpuQuery"`
-	Memory  float64 `query:"MemoryQuery"`
-	Sla     float64 `query:"SlaQuery"`
-	AvgRT   float64 `query:"AvgRTQuery"`
-	RT      float64 `query:"RTQuery"`
-	BTCount float64 `query:"BTCountQuery"`
-	Pods    float64 `query:"PodContainerCountQuery"`
+	Cpu          float64 `query:"CpuQuery"`
+	MaxCpu       float64 `query:"MaxCpuQuery"`
+	AvgCpu       float64 `query:"AvgCpuQuery"`
+	CPULimits    float64 `query:"CpuLimitsQuery"`
+	Memory       float64 `query:"MemoryQuery"`
+	MemoryLimits float64 `query:"MemoryLimitsQuery"`
+	Sla          float64 `query:"SlaQuery"`
+	AvgRT        float64 `query:"AvgRTQuery"`
+	RT           float64 `query:"RTQuery"`
+	BTCount      float64 `query:"BTCountQuery"`
+	Pods         float64 `query:"PodContainerCountQuery"`
 }
 
 type SlaDataProvider interface {
@@ -109,9 +115,9 @@ func (r *dataProvider) GetSlaData(containerName string, durationFromNow time.Dur
 		// build args matching number of %s placeholders and always pass quoted container name
 		placeholderCount := strings.Count(queryTemplate, "%s")
 		args := make([]interface{}, placeholderCount)
-		quoted := strconv.Quote(containerName)
+		// quoted := strconv.Quote(containerName)
 		for j := 0; j < placeholderCount; j++ {
-			args[j] = quoted
+			args[j] = containerName
 		}
 		query := fmt.Sprintf(queryTemplate, args...)
 
@@ -139,14 +145,17 @@ func (r *dataProvider) GetSlaData(containerName string, durationFromNow time.Dur
 			point, exists := byTimestamp[timestamp]
 			if !exists {
 				point = SlaDataPoint{
-					Memory:  math.NaN(),
-					AvgCpu:  math.NaN(),
-					Cpu:     math.NaN(),
-					Sla:     math.NaN(),
-					RT:      math.NaN(),
-					AvgRT:   math.NaN(),
-					BTCount: math.NaN(),
-					Pods:    math.NaN(),
+					Memory:       math.NaN(),
+					MemoryLimits: math.NaN(),
+					MaxCpu:       math.NaN(),
+					AvgCpu:       math.NaN(),
+					CPULimits:    math.NaN(),
+					Cpu:          math.NaN(),
+					Sla:          math.NaN(),
+					RT:           math.NaN(),
+					AvgRT:        math.NaN(),
+					BTCount:      math.NaN(),
+					Pods:         math.NaN(),
 				}
 			}
 			reflect.ValueOf(&point).Elem().FieldByName(field.Name).SetFloat(float64(value.Value))
