@@ -123,6 +123,8 @@ func newEmptyHistory() *PodHistory {
 // Consider refactoring to passing clusterState and create history provider working with checkpoints.
 type HistoryProvider interface {
 	GetClusterHistory() (map[model.PodID]*PodHistory, error)
+	// this one is bad but better than copy pasting
+	GetPrometheusClient() prometheusv1.API
 }
 
 type prometheusHistoryProvider struct {
@@ -391,4 +393,8 @@ func (p *prometheusHistoryProvider) GetClusterHistory() (map[model.PodID]*PodHis
 	}
 
 	return res, nil
+}
+
+func (p *prometheusHistoryProvider) GetPrometheusClient() prometheusv1.API {
+	return p.prometheusClient
 }

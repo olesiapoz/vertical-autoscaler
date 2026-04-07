@@ -181,12 +181,13 @@ admissionController:
 recommender:
   enabled: true
   image:
-    # Image repository for the Recommender default container.
-    repository: registry.k8s.io/autoscaling/vpa-recommender
+    # Image repository for the Recommender default container. 
+    # registry.k8s.io/autoscaling/vpa-recommender
+    repository: olesiapoz/vpa-recommender-arm64
     # Image tag for the Recommender default container; this will default to `.Chart.AppVersion` if not set
-    tag:
+    tag: prom
     # Image pull policy for the Recommender default container.
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
 
   serviceAccount:
     # If `true`, create a new `ServiceAccount` for the Recommender.

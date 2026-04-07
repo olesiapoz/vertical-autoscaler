@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: prometheus-pv-local
+  labels:
+    environment: "local"
+spec:
+  storageClassName: local-storage
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/Users/opo/University/Article/monitoring/monitoring/prometheus"
+    type: DirectoryOrCreate

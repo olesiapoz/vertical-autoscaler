@@ -1,0 +1,64 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vpa-recommender
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vpa-recommender
+  template:
+    metadata:
+      labels:
+        app: vpa-recommender
+    spec:
+      serviceAccountName: vpa-recommender
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534 # nobody
+      containers:
+      - args:
+        - --v=4
+        - --storage=prometheus
+        - --prometheus-address=http://prom-kube-stack-kube-prome-prometheus.monitoring.svc.cluster.local:9090 
+        - --prometheus-cadvisor-job-name=kubelet
+        - --container-pod-name-label=pod
+        - --container-name-label=pod
+        - --pod-name-label=pod
+        - --pod-label-prefix=label
+        - --metric-for-pod-labels=kube_pod_labels{job="kube-state-metrics"}[100m]
+        - --container-namespace-label=namespace
+        - --container-name-label=pod
+        - --pod-namespace-label=namespace
+        - --history-length=200m
+        - --history-resolution=5m
+        name: recommender
+        image: olesiapoz/vpa-recommender-arm64:prom
+        imagePullPolicy: Always
+        resources:
+          limits:
+            cpu: 200m
+            memory: 1000Mi
+          requests:
+            cpu: 50m
+            memory: 500Mi
+        ports:
+        - name: prometheus
+          containerPort: 8942
+        livenessProbe:
+          httpGet:
+            path: /health-check
+            port: prometheus
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health-check
+            port: prometheus
+            scheme: HTTP
+          periodSeconds: 10
+          failureThreshold: 3

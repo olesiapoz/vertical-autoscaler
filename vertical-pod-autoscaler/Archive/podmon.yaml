@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: business-tx-monitor
+  labels:
+    release: kube-prometheus-stack # Ensure this matches your Prometheus selector
+spec:
+  selector:
+    matchLabels:
+      app: demo1 # Labels on your application pod
+  podMetricsEndpoints:
+  - port: http # The name of the port in your pod spec
+    path: /actuator/prometheus
+    interval: 5s

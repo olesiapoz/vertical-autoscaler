@@ -1,0 +1,7 @@
+Kubernetes Official Blog: Search for "In-place Update of Pod Resources" (This explains the history and the promotion to GA).
+
+Kubernetes Documentation: Look under Tasks > Configure Pods and Containers > Resize CPU and Memory Resources assigned to a Container.
+
+KEP-1287: This is the "Kubernetes Enhancement Proposal." It is the most technical document available and describes exactly how the Kubelet handles the resizePolicy logic.
+
+Vertical Pod Autoscaler GitHub: The README in the autoscaler repo under vertical-pod-autoscaler explains how the VPA interacts with this specific field.
